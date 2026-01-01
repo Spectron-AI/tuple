@@ -161,7 +161,7 @@ module apiContainerApp 'modules/container-app.bicep' = {
       }
       {
         name: 'CORS_ORIGINS'
-        value: 'https://${webContainerApp.outputs.fqdn}'
+        value: '*'
       }
     ]
     secrets: [
