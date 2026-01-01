@@ -72,31 +72,7 @@ module containerRegistry 'modules/container-registry.bicep' = {
   }
 }
 
-// Azure Cache for Redis
-module redis 'modules/redis.bicep' = {
-  name: 'redis'
-  scope: rg
-  params: {
-    name: 'redis-${resourceToken}'
-    location: location
-    tags: tags
-  }
-}
-
-// Azure Database for PostgreSQL
-module postgresql 'modules/postgresql.bicep' = {
-  name: 'postgresql'
-  scope: rg
-  params: {
-    name: 'psql-${resourceToken}'
-    location: location
-    tags: tags
-    administratorLogin: 'tupleadmin'
-    databaseName: 'tuple'
-  }
-}
-
-// Key Vault for secrets
+// Key Vault for secrets (minimal for demo)
 module keyVault 'modules/keyvault.bicep' = {
   name: 'keyvault'
   scope: rg
@@ -111,7 +87,7 @@ module keyVault 'modules/keyvault.bicep' = {
       }
       {
         name: 'jwt-secret-key'
-        value: !empty(jwtSecretKey) ? jwtSecretKey : 'default-secret-change-in-production-${resourceToken}'
+        value: !empty(jwtSecretKey) ? jwtSecretKey : 'demo-secret-${resourceToken}'
       }
       {
         name: 'slack-bot-token'
@@ -124,14 +100,6 @@ module keyVault 'modules/keyvault.bicep' = {
       {
         name: 'teams-webhook-url'
         value: teamsWebhookUrl
-      }
-      {
-        name: 'database-url'
-        value: postgresql.outputs.connectionString
-      }
-      {
-        name: 'redis-url'
-        value: redis.outputs.connectionString
       }
     ]
   }
@@ -153,15 +121,19 @@ module apiContainerApp 'modules/container-app.bicep' = {
     env: [
       {
         name: 'ENVIRONMENT'
-        value: 'production'
+        value: 'demo'
       }
       {
         name: 'DEBUG'
-        value: 'false'
+        value: 'true'
       }
       {
         name: 'CORS_ORIGINS'
         value: '*'
+      }
+      {
+        name: 'DEMO_MODE'
+        value: 'true'
       }
     ]
     secrets: [
@@ -173,26 +145,6 @@ module apiContainerApp 'modules/container-app.bicep' = {
       {
         name: 'jwt-secret-key'
         keyVaultUrl: '${keyVault.outputs.endpoint}secrets/jwt-secret-key'
-        identity: 'system'
-      }
-      {
-        name: 'database-url'
-        keyVaultUrl: '${keyVault.outputs.endpoint}secrets/database-url'
-        identity: 'system'
-      }
-      {
-        name: 'redis-url'
-        keyVaultUrl: '${keyVault.outputs.endpoint}secrets/redis-url'
-        identity: 'system'
-      }
-      {
-        name: 'slack-bot-token'
-        keyVaultUrl: '${keyVault.outputs.endpoint}secrets/slack-bot-token'
-        identity: 'system'
-      }
-      {
-        name: 'teams-webhook-url'
-        keyVaultUrl: '${keyVault.outputs.endpoint}secrets/teams-webhook-url'
         identity: 'system'
       }
     ]
