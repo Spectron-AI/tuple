@@ -126,6 +126,17 @@ tuple/
 │       │   └── types/       # TypeScript types
 │       └── package.json
 │
+├── infra/                   # Azure Bicep templates
+│   ├── main.bicep           # Main infrastructure
+│   └── modules/             # Modular resources
+│
+├── terraform/               # Multi-cloud Terraform
+│   ├── main.tf              # Main configuration
+│   └── modules/             # Azure, AWS, GCP modules
+│
+├── .github/workflows/       # CI/CD pipelines
+├── docs/                    # Documentation
+├── azure.yaml               # Azure Developer CLI config
 ├── docker-compose.yml       # Docker orchestration
 └── README.md
 ```
@@ -169,6 +180,46 @@ Once the API is running, access the interactive documentation:
 | `POST /api/v1/chat` | Chat with your data |
 | `POST /api/v1/integrations/slack` | Set up Slack integration |
 | `POST /api/v1/integrations/teams` | Set up Teams integration |
+
+---
+
+## ☁️ Deployment
+
+Deploy Tuple to production on Azure, AWS, or GCP.
+
+### Quick Deploy with Azure Developer CLI (azd)
+
+```bash
+# Login to Azure
+azd auth login
+
+# Set environment variables
+azd env set OPENAI_API_KEY "your-key"
+
+# Deploy everything
+azd up
+```
+
+### Multi-Cloud with Terraform
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your settings
+
+terraform init
+terraform apply
+```
+
+### Supported Platforms
+
+| Platform | Tool | Resources |
+|----------|------|-----------|
+| **Azure** | azd / Bicep | Container Apps, PostgreSQL, Redis, Key Vault |
+| **AWS** | Terraform | ECS Fargate, RDS, ElastiCache, Secrets Manager |
+| **GCP** | Terraform | Cloud Run, Cloud SQL, Memorystore, Secret Manager |
+
+📖 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for complete deployment instructions.
 
 ---
 

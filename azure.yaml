@@ -1,0 +1,68 @@
+# Azure Developer CLI (azd) configuration
+# Run `azd up` to deploy the application to Azure
+
+name: tuple
+metadata:
+  template: tuple-data-intelligence
+
+# Azure services configuration
+services:
+  # Frontend - Next.js Web Application
+  web:
+    project: ./apps/web
+    language: js
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+    hooks:
+      prepackage:
+        shell: sh
+        run: npm ci && npm run build
+
+  # Backend - Python FastAPI Application
+  api:
+    project: ./apps/api
+    language: python
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+
+# Infrastructure configuration
+infra:
+  provider: bicep
+  path: ./infra
+
+# Pipeline configuration for CI/CD
+pipeline:
+  provider: github
+
+# Hooks for deployment lifecycle
+hooks:
+  # Pre-provision hook - runs before infrastructure is created
+  preprovision:
+    shell: sh
+    run: |
+      echo "Preparing to provision Azure resources..."
+      
+  # Post-provision hook - runs after infrastructure is created
+  postprovision:
+    shell: sh
+    run: |
+      echo "Azure resources provisioned successfully!"
+      echo "Web URL: ${SERVICE_WEB_ENDPOINT_URL}"
+      echo "API URL: ${SERVICE_API_ENDPOINT_URL}"
+
+  # Pre-deploy hook
+  predeploy:
+    shell: sh
+    run: |
+      echo "Preparing deployment..."
+
+  # Post-deploy hook
+  postdeploy:
+    shell: sh
+    run: |
+      echo "Deployment complete!"
+      echo "Application is available at: ${SERVICE_WEB_ENDPOINT_URL}"

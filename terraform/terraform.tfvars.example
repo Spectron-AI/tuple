@@ -1,0 +1,56 @@
+# Tuple - Terraform Variables Example
+# Copy this file to terraform.tfvars and fill in your values
+
+# =============================================================================
+# Cloud Provider Selection
+# =============================================================================
+
+# Choose your cloud provider: "azure", "aws", or "gcp"
+cloud_provider = "azure"
+
+# =============================================================================
+# Project Settings
+# =============================================================================
+
+project_name = "tuple"
+environment  = "production"
+
+# =============================================================================
+# Azure-specific Configuration
+# =============================================================================
+
+# Azure region for deployment
+azure_location = "eastus"
+
+# =============================================================================
+# AWS-specific Configuration
+# =============================================================================
+
+# AWS region for deployment
+aws_region = "us-east-1"
+
+# =============================================================================
+# GCP-specific Configuration
+# =============================================================================
+
+# GCP project ID
+gcp_project_id = "your-gcp-project-id"
+
+# GCP region for deployment
+gcp_region = "us-central1"
+
+# =============================================================================
+# Application Secrets
+# =============================================================================
+
+# OpenAI API Key for LLM features
+openai_api_key = ""
+
+# JWT Secret Key for authentication
+jwt_secret_key = ""
+
+# Slack Bot Token for Slack integration
+slack_bot_token = ""
+
+# Microsoft Teams Webhook URL for Teams integration
+teams_webhook_url = ""
