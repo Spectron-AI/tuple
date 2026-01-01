@@ -1,0 +1,21 @@
+{
+  "name": "tuple",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Intelligent Data Platform - Connect, Analyze, and Get Insights from Your Data",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:api": "cd apps/api && python -m uvicorn main:app --reload --port 8000",
+    "build": "cd apps/web && npm run build",
+    "start": "cd apps/web && npm run start",
+    "lint": "cd apps/web && npm run lint",
+    "install:all": "npm install && cd apps/web && npm install && cd ../api && pip install -r requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
