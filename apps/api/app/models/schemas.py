@@ -140,7 +140,6 @@ class DataSourceResponse(DataSourceBase):
 class QueryRequest(BaseModel):
     """Request model for executing queries."""
     query: str
-    data_source_id: str
     limit: int = Field(default=100, ge=1, le=10000)
     timeout: int = Field(default=30, ge=1, le=300)
 
@@ -148,7 +147,6 @@ class QueryRequest(BaseModel):
 class NLQueryRequest(BaseModel):
     """Request model for natural language queries."""
     question: str
-    data_source_id: str
     include_explanation: bool = True
 
 

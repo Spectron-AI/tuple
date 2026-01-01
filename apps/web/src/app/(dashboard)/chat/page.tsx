@@ -40,11 +40,11 @@ interface Message {
   results?: any[];
 }
 
-const mockDataSources = [
-  { id: "1", name: "Production PostgreSQL", type: "postgresql" },
-  { id: "2", name: "Analytics MongoDB", type: "mongodb" },
-  { id: "3", name: "Sales Data API", type: "rest_api" },
-];
+interface DataSourceItem {
+  id: string;
+  name: string;
+  type: string;
+}
 
 const suggestedQuestions = [
   "What are the top 10 customers by revenue?",
@@ -58,7 +58,28 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDataSource, setSelectedDataSource] = useState<string>("");
+  const [dataSources, setDataSources] = useState<DataSourceItem[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load data sources from API
+  useEffect(() => {
+    const loadDataSources = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/api/v1/datasources");
+        if (response.ok) {
+          const sources = await response.json();
+          setDataSources(sources.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            type: s.type,
+          })));
+        }
+      } catch (error) {
+        console.error("Failed to load data sources:", error);
+      }
+    };
+    loadDataSources();
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -140,7 +161,7 @@ LIMIT 10;`,
             <SelectValue placeholder="Select a data source" />
           </SelectTrigger>
           <SelectContent>
-            {mockDataSources.map((source) => (
+            {dataSources.map((source) => (
               <SelectItem key={source.id} value={source.id}>
                 <div className="flex items-center gap-2">
                   <Database className="h-4 w-4" />

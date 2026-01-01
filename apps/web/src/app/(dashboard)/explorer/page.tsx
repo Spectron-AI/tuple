@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,80 +31,101 @@ import {
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 
-const mockDataSources = [
-  {
-    id: "1",
-    name: "Production PostgreSQL",
-    type: "postgresql",
-    tables: [
-      {
-        name: "users",
-        columns: [
-          { name: "id", type: "uuid", primaryKey: true },
-          { name: "email", type: "varchar(255)" },
-          { name: "name", type: "varchar(255)" },
-          { name: "created_at", type: "timestamp" },
-        ],
-        rowCount: 15234,
-      },
-      {
-        name: "orders",
-        columns: [
-          { name: "id", type: "uuid", primaryKey: true },
-          { name: "user_id", type: "uuid" },
-          { name: "total", type: "decimal(10,2)" },
-          { name: "status", type: "varchar(50)" },
-          { name: "created_at", type: "timestamp" },
-        ],
-        rowCount: 87654,
-      },
-      {
-        name: "products",
-        columns: [
-          { name: "id", type: "uuid", primaryKey: true },
-          { name: "name", type: "varchar(255)" },
-          { name: "price", type: "decimal(10,2)" },
-          { name: "category", type: "varchar(100)" },
-          { name: "stock", type: "integer" },
-        ],
-        rowCount: 1250,
-      },
-    ],
-  },
-];
+interface TableColumn {
+  name: string;
+  type: string;
+  primary_key?: boolean;
+  primaryKey?: boolean;
+}
 
-const mockQueryResults = [
-  { id: "1", email: "john@example.com", name: "John Doe", orders: 45, revenue: 12500.0 },
-  { id: "2", email: "jane@example.com", name: "Jane Smith", orders: 32, revenue: 8750.5 },
-  { id: "3", email: "bob@example.com", name: "Bob Wilson", orders: 28, revenue: 7200.0 },
-  { id: "4", email: "alice@example.com", name: "Alice Brown", orders: 25, revenue: 6800.0 },
-  { id: "5", email: "charlie@example.com", name: "Charlie Davis", orders: 22, revenue: 5900.0 },
-];
+interface TableSchema {
+  name: string;
+  columns: TableColumn[];
+  row_count?: number;
+  rowCount?: number;
+}
+
+interface DataSourceWithSchema {
+  id: string;
+  name: string;
+  type: string;
+  tables: TableSchema[];
+}
 
 export default function ExplorerPage() {
+  const [dataSources, setDataSources] = useState<DataSourceWithSchema[]>([]);
   const [selectedDataSource, setSelectedDataSource] = useState<string>("");
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [query, setQuery] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
   const [results, setResults] = useState<any[] | null>(null);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const currentDataSource = mockDataSources.find((ds) => ds.id === selectedDataSource);
+  // Load data sources from API on mount
+  useEffect(() => {
+    const loadDataSources = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/api/v1/datasources");
+        if (response.ok) {
+          const sources = await response.json();
+          // Transform API response to include tables from schema_data
+          const transformed = sources.map((source: any) => ({
+            id: source.id,
+            name: source.name,
+            type: source.type,
+            tables: source.schema_data?.tables || [],
+          }));
+          setDataSources(transformed);
+        }
+      } catch (error) {
+        console.error("Failed to load data sources:", error);
+        toast.error("Failed to load data sources");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadDataSources();
+  }, []);
+
+  const currentDataSource = dataSources.find((ds) => ds.id === selectedDataSource);
   const currentTable = currentDataSource?.tables.find((t) => t.name === selectedTable);
 
   const handleExecuteQuery = async () => {
-    if (!query.trim()) return;
+    if (!query.trim() || !selectedDataSource) return;
     
     setIsExecuting(true);
     const startTime = Date.now();
     
-    // Simulate query execution
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    setResults(mockQueryResults);
-    setExecutionTime(Date.now() - startTime);
-    setIsExecuting(false);
-    toast.success("Query executed successfully");
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/datasources/${selectedDataSource}/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: query.trim() }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        const errorMessage = typeof error.detail === 'string' 
+          ? error.detail 
+          : (error.detail?.message || error.message || JSON.stringify(error.detail) || "Query execution failed");
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      setResults(result.rows || []);
+      setExecutionTime(Date.now() - startTime);
+      toast.success(`Query executed successfully (${result.rows?.length || 0} rows)`);
+    } catch (error: unknown) {
+      console.error("Query error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to execute query";
+      toast.error(errorMessage);
+    } finally {
+      setIsExecuting(false);
+    }
   };
 
   const handleTableSelect = (tableName: string) => {
@@ -132,7 +153,7 @@ export default function ExplorerPage() {
               <SelectValue placeholder="Select data source" />
             </SelectTrigger>
             <SelectContent>
-              {mockDataSources.map((ds) => (
+              {dataSources.map((ds) => (
                 <SelectItem key={ds.id} value={ds.id}>
                   <div className="flex items-center gap-2">
                     <Database className="h-4 w-4" />
@@ -164,7 +185,7 @@ export default function ExplorerPage() {
                       <Table className="h-4 w-4" />
                       <span className="flex-1 font-medium text-sm">{table.name}</span>
                       <Badge variant="secondary" className="text-xs">
-                        {table.rowCount.toLocaleString()}
+                        {(table.row_count || table.rowCount || 0).toLocaleString()}
                       </Badge>
                     </button>
                     {selectedTable === table.name && (
@@ -181,7 +202,7 @@ export default function ExplorerPage() {
                             <Columns className="h-3 w-3" />
                             <span className="flex-1">{col.name}</span>
                             <span className="text-xs opacity-70">{col.type}</span>
-                            {col.primaryKey && (
+                            {(col.primaryKey || col.primary_key) && (
                               <Badge variant="outline" className="text-xs px-1">
                                 PK
                               </Badge>

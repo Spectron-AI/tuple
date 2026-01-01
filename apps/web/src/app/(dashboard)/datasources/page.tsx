@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,76 +42,207 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { useDataSourceStore } from "@/lib/store";
+import { ConnectionConfig } from "@/types";
 
 const dataSourceTypes = [
-  { id: "postgresql", name: "PostgreSQL", icon: "🐘" },
-  { id: "mysql", name: "MySQL", icon: "🐬" },
-  { id: "mongodb", name: "MongoDB", icon: "🍃" },
-  { id: "sqlite", name: "SQLite", icon: "📦" },
-  { id: "snowflake", name: "Snowflake", icon: "❄️" },
-  { id: "bigquery", name: "BigQuery", icon: "📊" },
-  { id: "redshift", name: "Redshift", icon: "🔴" },
-  { id: "csv", name: "CSV File", icon: "📄" },
-  { id: "rest_api", name: "REST API", icon: "🔗" },
+  { id: "postgresql", name: "PostgreSQL", icon: "🐘", defaultPort: "5432" },
+  { id: "mysql", name: "MySQL", icon: "🐬", defaultPort: "3306" },
+  { id: "mongodb", name: "MongoDB", icon: "🍃", defaultPort: "27017" },
+  { id: "sqlite", name: "SQLite", icon: "📦", defaultPort: "" },
+  { id: "snowflake", name: "Snowflake", icon: "❄️", defaultPort: "" },
+  { id: "bigquery", name: "BigQuery", icon: "📊", defaultPort: "" },
+  { id: "redshift", name: "Redshift", icon: "🔴", defaultPort: "5439" },
+  { id: "csv", name: "CSV File", icon: "📄", defaultPort: "" },
+  { id: "rest_api", name: "REST API", icon: "🔗", defaultPort: "" },
 ];
 
-const mockDataSources = [
-  {
-    id: "1",
-    name: "Production PostgreSQL",
-    type: "postgresql",
-    status: "connected",
-    lastSync: "2 minutes ago",
-    tables: 24,
-    rows: "1.2M",
-  },
-  {
-    id: "2",
-    name: "Analytics MongoDB",
-    type: "mongodb",
-    status: "connected",
-    lastSync: "5 minutes ago",
-    tables: 12,
-    rows: "850K",
-  },
-  {
-    id: "3",
-    name: "Sales Data API",
-    type: "rest_api",
-    status: "connected",
-    lastSync: "10 minutes ago",
-    tables: 8,
-    rows: "250K",
-  },
-  {
-    id: "4",
-    name: "Customer CSV Export",
-    type: "csv",
-    status: "disconnected",
-    lastSync: "1 hour ago",
-    tables: 1,
-    rows: "50K",
-  },
-];
+interface ConnectionForm {
+  name: string;
+  host: string;
+  port: string;
+  database: string;
+  username: string;
+  password: string;
+  url: string;
+  apiKey: string;
+}
 
 export default function DataSourcesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [formData, setFormData] = useState<ConnectionForm>({
+    name: "",
+    host: "localhost",
+    port: "",
+    database: "",
+    username: "",
+    password: "",
+    url: "",
+    apiKey: "",
+  });
 
-  const filteredSources = mockDataSources.filter((source) =>
+  const { dataSources, addDataSource, removeDataSource } = useDataSourceStore();
+
+  const filteredSources = dataSources.filter((source) =>
     source.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    // Simulate connection
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setIsConnecting(false);
-    setIsDialogOpen(false);
-    toast.success("Data source connected successfully!");
+  const handleTypeSelect = (typeId: string) => {
+    setSelectedType(typeId);
+    const typeInfo = dataSourceTypes.find(t => t.id === typeId);
+    if (typeInfo) {
+      setFormData(prev => ({ ...prev, port: typeInfo.defaultPort }));
+    }
   };
+
+  const handleInputChange = (field: keyof ConnectionForm, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const resetForm = () => {
+    setSelectedType("");
+    setFormData({
+      name: "",
+      host: "localhost",
+      port: "",
+      database: "",
+      username: "",
+      password: "",
+      url: "",
+      apiKey: "",
+    });
+  };
+
+  const handleConnect = async () => {
+    if (!formData.name) {
+      toast.error("Please enter a connection name");
+      return;
+    }
+
+    setIsConnecting(true);
+
+    try {
+      // Build connection config based on type
+      let connectionConfig: Record<string, unknown> = {};
+      
+      if (selectedType === "rest_api") {
+        connectionConfig = {
+          url: formData.url,
+          api_key: formData.apiKey,
+        };
+      } else if (selectedType === "csv") {
+        connectionConfig = {
+          file_path: formData.name,
+        };
+      } else {
+        connectionConfig = {
+          host: formData.host,
+          port: parseInt(formData.port) || undefined,
+          database: formData.database,
+          username: formData.username,
+          password: formData.password,
+        };
+      }
+
+      // Call the API to create the data source
+      const response = await fetch("http://localhost:8000/api/v1/datasources", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          type: selectedType,
+          config: connectionConfig,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || "Failed to connect to data source");
+      }
+
+      const newDataSource = await response.json();
+
+      // Add to local store
+      addDataSource({
+        id: newDataSource.id,
+        name: newDataSource.name,
+        type: selectedType as "postgresql" | "mysql" | "mongodb" | "sqlite" | "snowflake" | "bigquery" | "redshift" | "csv" | "rest_api",
+        status: "connected",
+        config: connectionConfig as ConnectionConfig,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastConnected: new Date(),
+        schema: newDataSource.schema,
+      });
+
+      toast.success("Data source connected successfully!");
+      setIsDialogOpen(false);
+      resetForm();
+    } catch (error: unknown) {
+      console.error("Connection error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to connect to data source";
+      toast.error(errorMessage);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    try {
+      // Call API to delete
+      const response = await fetch(`http://localhost:8000/api/v1/datasources/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete data source");
+      }
+
+      removeDataSource(id);
+      toast.success(`${name} has been deleted`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete data source";
+      toast.error(errorMessage);
+    }
+  };
+
+  // Load data sources from API on mount
+  useEffect(() => {
+    const loadDataSources = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/api/v1/datasources");
+        if (response.ok) {
+          const sources = await response.json();
+          sources.forEach((source: { id: string; name: string; type: string; is_connected?: boolean; last_connected?: string; schema?: { tables?: unknown[] }; connection_config?: ConnectionConfig }) => {
+            // Check if already in store
+            const exists = dataSources.find(ds => ds.id === source.id);
+            if (!exists) {
+              addDataSource({
+                id: source.id,
+                name: source.name,
+                type: source.type as "postgresql" | "mysql" | "mongodb" | "sqlite" | "snowflake" | "bigquery" | "redshift" | "csv" | "rest_api",
+                status: source.is_connected ? "connected" : "disconnected",
+                config: source.connection_config || {},
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                lastConnected: source.last_connected ? new Date(source.last_connected) : undefined,
+                schema: source.schema as { tables: { name: string; columns: { name: string; type: string; nullable: boolean; primaryKey: boolean }[] }[] } | undefined,
+              });
+            }
+          });
+        }
+      } catch (error) {
+        console.error("Failed to load data sources:", error);
+      }
+    };
+
+    loadDataSources();
+  }, []);
 
   const getTypeIcon = (type: string) => {
     const found = dataSourceTypes.find((t) => t.id === type);
@@ -128,7 +259,10 @@ export default function DataSourcesPage() {
             Connect and manage your data sources
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) resetForm();
+        }}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <Plus className="h-4 w-4" />
@@ -150,7 +284,7 @@ export default function DataSourcesPage() {
                   {dataSourceTypes.map((type) => (
                     <button
                       key={type.id}
-                      onClick={() => setSelectedType(type.id)}
+                      onClick={() => handleTypeSelect(type.id)}
                       className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all hover:border-primary/50 ${
                         selectedType === type.id
                           ? "border-primary bg-primary/5"
@@ -174,29 +308,61 @@ export default function DataSourcesPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="name">Connection Name</Label>
-                      <Input id="name" placeholder="My Database" />
+                      <Input 
+                        id="name" 
+                        placeholder="My Database" 
+                        value={formData.name}
+                        onChange={(e) => handleInputChange("name", e.target.value)}
+                      />
                     </div>
                     {selectedType !== "csv" && selectedType !== "rest_api" && (
                       <>
                         <div className="space-y-2">
                           <Label htmlFor="host">Host</Label>
-                          <Input id="host" placeholder="localhost" />
+                          <Input 
+                            id="host" 
+                            placeholder="localhost" 
+                            value={formData.host}
+                            onChange={(e) => handleInputChange("host", e.target.value)}
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="port">Port</Label>
-                          <Input id="port" placeholder="5432" type="number" />
+                          <Input 
+                            id="port" 
+                            placeholder="3306" 
+                            type="number" 
+                            value={formData.port}
+                            onChange={(e) => handleInputChange("port", e.target.value)}
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="database">Database</Label>
-                          <Input id="database" placeholder="mydb" />
+                          <Input 
+                            id="database" 
+                            placeholder="mydb" 
+                            value={formData.database}
+                            onChange={(e) => handleInputChange("database", e.target.value)}
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="username">Username</Label>
-                          <Input id="username" placeholder="postgres" />
+                          <Input 
+                            id="username" 
+                            placeholder="root" 
+                            value={formData.username}
+                            onChange={(e) => handleInputChange("username", e.target.value)}
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="password">Password</Label>
-                          <Input id="password" type="password" placeholder="••••••••" />
+                          <Input 
+                            id="password" 
+                            type="password" 
+                            placeholder="••••••••" 
+                            value={formData.password}
+                            onChange={(e) => handleInputChange("password", e.target.value)}
+                          />
                         </div>
                       </>
                     )}
@@ -204,11 +370,21 @@ export default function DataSourcesPage() {
                       <>
                         <div className="col-span-2 space-y-2">
                           <Label htmlFor="url">API Base URL</Label>
-                          <Input id="url" placeholder="https://api.example.com" />
+                          <Input 
+                            id="url" 
+                            placeholder="https://api.example.com" 
+                            value={formData.url}
+                            onChange={(e) => handleInputChange("url", e.target.value)}
+                          />
                         </div>
                         <div className="col-span-2 space-y-2">
                           <Label htmlFor="apiKey">API Key (optional)</Label>
-                          <Input id="apiKey" placeholder="Your API key" />
+                          <Input 
+                            id="apiKey" 
+                            placeholder="Your API key" 
+                            value={formData.apiKey}
+                            onChange={(e) => handleInputChange("apiKey", e.target.value)}
+                          />
                         </div>
                       </>
                     )}
@@ -311,7 +487,10 @@ export default function DataSourcesPage() {
                         Settings
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem 
+                        className="text-destructive"
+                        onClick={() => handleDelete(source.id, source.name)}
+                      >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
                       </DropdownMenuItem>
@@ -324,16 +503,16 @@ export default function DataSourcesPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Database className="h-4 w-4" />
-                      <span>{source.tables} tables</span>
-                      <span>•</span>
-                      <span>{source.rows} rows</span>
+                      <span>{source.schema?.tables?.length || 0} tables</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Last synced: {source.lastSync}
+                      {source.lastConnected 
+                        ? `Last connected: ${new Date(source.lastConnected).toLocaleString()}` 
+                        : "Never connected"}
                     </p>
                   </div>
                   <Badge
-                    variant={source.status === "connected" ? "success" : "secondary"}
+                    variant={source.status === "connected" ? "default" : "secondary"}
                     className="gap-1"
                   >
                     {source.status === "connected" ? (
