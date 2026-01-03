@@ -24,8 +24,15 @@ class Settings(BaseSettings):
     
     # OpenAI settings
     openai_api_key: Optional[str] = None
-    openai_model: str = "gpt-4-turbo-preview"
+    openai_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
+    
+    # Azure OpenAI settings
+    azure_openai_endpoint: Optional[str] = None
+    azure_openai_api_key: Optional[str] = None
+    azure_openai_api_version: str = "2024-02-15-preview"
+    azure_openai_deployment: Optional[str] = None  # deployment name for chat model
+    use_azure_openai: bool = False  # Set to true to use Azure OpenAI instead of OpenAI
     
     # Slack settings
     slack_bot_token: Optional[str] = None

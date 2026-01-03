@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,76 +23,30 @@ import {
   BarChart3,
   LineChart,
   PieChart,
+  Database,
+  Settings,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 
-const mockInsights = [
-  {
-    id: "1",
-    title: "Revenue Growth Trend",
-    description:
-      "Your monthly revenue has been growing steadily at an average rate of 15% over the past 6 months. This exceeds the industry benchmark of 8%.",
-    type: "trend",
-    severity: "info",
-    dataSource: "Production PostgreSQL",
-    confidence: 92,
-    createdAt: "2 hours ago",
-    visualization: "line",
-    metrics: [
-      { label: "Growth Rate", value: "15%", change: "+3%" },
-      { label: "Industry Avg", value: "8%", change: "" },
-    ],
-  },
-  {
-    id: "2",
-    title: "Unusual Order Spike Detected",
-    description:
-      "Orders from the APAC region increased by 340% yesterday compared to the 30-day average. This anomaly may indicate a successful marketing campaign or potential data quality issue.",
-    type: "anomaly",
-    severity: "warning",
-    dataSource: "Analytics MongoDB",
-    confidence: 87,
-    createdAt: "5 hours ago",
-    visualization: "bar",
-    metrics: [
-      { label: "APAC Orders", value: "2,450", change: "+340%" },
-      { label: "30-day Avg", value: "560", change: "" },
-    ],
-  },
-  {
-    id: "3",
-    title: "Customer Churn Risk",
-    description:
-      "23 enterprise customers show high churn risk based on decreased engagement, support ticket frequency, and usage patterns. Immediate attention recommended.",
-    type: "recommendation",
-    severity: "critical",
-    dataSource: "Sales Data API",
-    confidence: 78,
-    createdAt: "1 day ago",
-    visualization: "pie",
-    metrics: [
-      { label: "At-Risk Customers", value: "23", change: "+5" },
-      { label: "Potential Revenue Loss", value: "$450K", change: "" },
-    ],
-  },
-  {
-    id: "4",
-    title: "Product Performance Correlation",
-    description:
-      "Strong positive correlation (0.85) found between customer support response time and product reviews. Faster response times correlate with 2.3x higher ratings.",
-    type: "correlation",
-    severity: "info",
-    dataSource: "Production PostgreSQL",
-    confidence: 94,
-    createdAt: "2 days ago",
-    visualization: "scatter",
-    metrics: [
-      { label: "Correlation", value: "0.85", change: "" },
-      { label: "Rating Impact", value: "2.3x", change: "" },
-    ],
-  },
-];
+interface Insight {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  severity: string;
+  dataSource: string;
+  confidence: number;
+  createdAt: string;
+  visualization: string;
+  metrics: Array<{ label?: string; name?: string; value: any; change?: any; unit?: string }>;
+}
+
+interface DataSourceItem {
+  id: string;
+  name: string;
+  type: string;
+}
 
 const insightTypes = [
   { id: "all", label: "All Insights" },
@@ -105,17 +59,83 @@ const insightTypes = [
 export default function InsightsPage() {
   const [selectedType, setSelectedType] = useState("all");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [dataSources, setDataSources] = useState<DataSourceItem[]>([]);
+  const [selectedDataSource, setSelectedDataSource] = useState("all");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadDataSources();
+    setIsLoading(false);
+  }, []);
+
+  const loadDataSources = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/datasources");
+      if (res.ok) {
+        const data = await res.json();
+        setDataSources(data);
+      }
+    } catch (error) {
+      console.error("Failed to load data sources:", error);
+    }
+  };
 
   const filteredInsights =
     selectedType === "all"
-      ? mockInsights
-      : mockInsights.filter((insight) => insight.type === selectedType);
+      ? insights
+      : insights.filter((insight: Insight) => insight.type === selectedType);
 
   const handleGenerateInsights = async () => {
+    if (dataSources.length === 0) {
+      toast.error("Please connect a data source first");
+      return;
+    }
+    
     setIsGenerating(true);
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    setIsGenerating(false);
-    toast.success("New insights generated!");
+    
+    try {
+      // Call the insights generate API
+      const targetSource = selectedDataSource === "all" 
+        ? dataSources[0]?.id 
+        : selectedDataSource;
+      
+      const res = await fetch("http://localhost:8000/api/v1/insights/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          data_source_id: targetSource,
+          max_insights: 5,
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        // Transform API response to match our Insight interface
+        const transformedInsights = data.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          type: item.insight_type || item.type || "trend",
+          severity: item.severity || "info",
+          dataSource: dataSources.find(ds => ds.id === item.data_source_id)?.name || "Unknown",
+          confidence: item.confidence || 85,
+          createdAt: item.created_at ? new Date(item.created_at).toLocaleString() : "Just now",
+          visualization: item.visualization || "bar",
+          metrics: item.metrics || [],
+        }));
+        setInsights(transformedInsights);
+        toast.success(`Generated ${transformedInsights.length} insights!`);
+      } else {
+        const error = await res.json().catch(() => ({}));
+        toast.error(error.detail || "Failed to generate insights");
+      }
+    } catch (err) {
+      console.error("Error generating insights:", err);
+      toast.error("Failed to connect to API");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const getTypeIcon = (type: string) => {
@@ -211,26 +231,73 @@ export default function InsightsPage() {
             </Button>
           ))}
         </div>
-        <Select>
+        <Select value={selectedDataSource} onValueChange={setSelectedDataSource}>
           <SelectTrigger className="w-48 ml-auto">
+            <Database className="h-4 w-4 mr-2" />
             <SelectValue placeholder="All Data Sources" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Data Sources</SelectItem>
-            <SelectItem value="postgresql">Production PostgreSQL</SelectItem>
-            <SelectItem value="mongodb">Analytics MongoDB</SelectItem>
-            <SelectItem value="api">Sales Data API</SelectItem>
+            {dataSources.map((ds) => (
+              <SelectItem key={ds.id} value={ds.id}>
+                {ds.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
 
       {/* Insights Grid */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="grid gap-6 md:grid-cols-2"
-      >
-        {filteredInsights.map((insight, index) => (
+      {isLoading ? (
+        <div className="text-center py-12">
+          <RefreshCw className="mx-auto h-12 w-12 text-muted-foreground animate-spin" />
+          <h3 className="mt-4 text-lg font-semibold">Loading...</h3>
+        </div>
+      ) : filteredInsights.length === 0 ? (
+        <Card className="py-16">
+          <div className="text-center">
+            <div className="mx-auto h-20 w-20 rounded-full bg-muted flex items-center justify-center mb-4">
+              <Sparkles className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">No AI Insights Yet</h3>
+            <p className="text-muted-foreground max-w-md mx-auto mb-6">
+              {dataSources.length === 0 
+                ? "Connect a data source first, then generate AI-powered insights about your data."
+                : "Click 'Generate Insights' to analyze your connected data sources and discover patterns, anomalies, and recommendations."}
+            </p>
+            <div className="flex items-center justify-center gap-4">
+              {dataSources.length === 0 ? (
+                <Button asChild>
+                  <a href="/datasources">
+                    <Database className="h-4 w-4 mr-2" />
+                    Connect Data Source
+                  </a>
+                </Button>
+              ) : (
+                <Button onClick={handleGenerateInsights} disabled={isGenerating}>
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Generate Insights
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="grid gap-6 md:grid-cols-2"
+        >
+          {filteredInsights.map((insight: Insight, index: number) => (
           <motion.div
             key={insight.id}
             initial={{ opacity: 0, y: 20 }}
@@ -275,17 +342,22 @@ export default function InsightsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   {insight.metrics.map((metric, i) => (
                     <div key={i} className="p-3 rounded-lg bg-muted/50">
-                      <p className="text-xs text-muted-foreground">{metric.label}</p>
+                      <p className="text-xs text-muted-foreground">{metric.label || metric.name}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xl font-bold">{metric.value}</span>
-                        {metric.change && (
+                        {metric.change !== undefined && metric.change !== null && (
                           <Badge
                             variant={
-                              metric.change.startsWith("+") ? "success" : "destructive"
+                              String(metric.change).startsWith("+") || Number(metric.change) > 0 
+                                ? "success" 
+                                : "destructive"
                             }
                             className="text-xs"
                           >
-                            {metric.change}
+                            {typeof metric.change === "number" 
+                              ? (metric.change > 0 ? `+${metric.change}` : metric.change)
+                              : metric.change}
+                            {metric.unit || ""}
                           </Badge>
                         )}
                       </div>
@@ -314,16 +386,7 @@ export default function InsightsPage() {
             </Card>
           </motion.div>
         ))}
-      </motion.div>
-
-      {filteredInsights.length === 0 && (
-        <div className="text-center py-12">
-          <Sparkles className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-4 text-lg font-semibold">No insights found</h3>
-          <p className="text-muted-foreground">
-            Try adjusting your filters or generate new insights
-          </p>
-        </div>
+        </motion.div>
       )}
     </div>
   );

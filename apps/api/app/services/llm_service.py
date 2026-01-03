@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import Any, Dict, List, Optional
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, AsyncAzureOpenAI
 
 from app.core.config import settings
 from app.models import (
@@ -19,8 +19,33 @@ class LLMService:
     """Service for LLM-powered data intelligence."""
     
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
-        self.model = settings.openai_model
+        self.is_azure = settings.use_azure_openai and settings.azure_openai_endpoint
+        
+        if self.is_azure:
+            # Use Azure OpenAI
+            self.client = AsyncAzureOpenAI(
+                azure_endpoint=settings.azure_openai_endpoint,
+                api_key=settings.azure_openai_api_key,
+                api_version=settings.azure_openai_api_version,
+            )
+            self.model = settings.azure_openai_deployment or "gpt-4o-mini"
+            logger.info(f"Using Azure OpenAI with deployment: {self.model}")
+        else:
+            # Use OpenAI directly
+            self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+            self.model = settings.openai_model
+            logger.info(f"Using OpenAI with model: {self.model}")
+    
+    def _get_completion_kwargs(self, temperature: float = 0.3) -> Dict[str, Any]:
+        """Get kwargs for chat completion, handling Azure limitations."""
+        kwargs = {
+            "model": self.model,
+            "response_format": {"type": "json_object"},
+        }
+        # Azure OpenAI may not support custom temperature for some models
+        if not self.is_azure:
+            kwargs["temperature"] = temperature
+        return kwargs
     
     async def natural_language_to_sql(
         self,
@@ -54,15 +79,12 @@ Respond in JSON format:
 {{"sql": "SELECT ...", "explanation": "Brief explanation of what the query does"}}"""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": question},
-                ],
-                temperature=0.1,
-                response_format={"type": "json_object"},
-            )
+            kwargs = self._get_completion_kwargs(temperature=0.1)
+            kwargs["messages"] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question},
+            ]
+            response = await self.client.chat.completions.create(**kwargs)
             
             result = json.loads(response.choices[0].message.content)
             return result
@@ -129,15 +151,12 @@ Respond in JSON format:
 }}"""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "Analyze this data and provide insights."},
-                ],
-                temperature=0.3,
-                response_format={"type": "json_object"},
-            )
+            kwargs = self._get_completion_kwargs(temperature=0.3)
+            kwargs["messages"] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Analyze this data and provide insights."},
+            ]
+            response = await self.client.chat.completions.create(**kwargs)
             
             result = json.loads(response.choices[0].message.content)
             return result.get("insights", [])
@@ -174,15 +193,12 @@ Respond in JSON format:
 }}"""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "Explain this database schema."},
-                ],
-                temperature=0.2,
-                response_format={"type": "json_object"},
-            )
+            kwargs = self._get_completion_kwargs(temperature=0.2)
+            kwargs["messages"] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Explain this database schema."},
+            ]
+            response = await self.client.chat.completions.create(**kwargs)
             
             result = json.loads(response.choices[0].message.content)
             return result
@@ -239,12 +255,9 @@ Respond in JSON format:
         messages.append({"role": "user", "content": message})
         
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.3,
-                response_format={"type": "json_object"},
-            )
+            kwargs = self._get_completion_kwargs(temperature=0.3)
+            kwargs["messages"] = messages
+            response = await self.client.chat.completions.create(**kwargs)
             
             result = json.loads(response.choices[0].message.content)
             return result
@@ -291,15 +304,12 @@ Respond in JSON format:
 }}"""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "Summarize this table."},
-                ],
-                temperature=0.2,
-                response_format={"type": "json_object"},
-            )
+            kwargs = self._get_completion_kwargs(temperature=0.2)
+            kwargs["messages"] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Summarize this table."},
+            ]
+            response = await self.client.chat.completions.create(**kwargs)
             
             result = json.loads(response.choices[0].message.content)
             return result

@@ -58,6 +58,7 @@ export default function ExplorerPage() {
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [query, setQuery] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
+  const [columns, setColumns] = useState<Array<{ name: string; type: string }>>([]);
   const [results, setResults] = useState<any[] | null>(null);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -116,6 +117,7 @@ export default function ExplorerPage() {
       }
 
       const result = await response.json();
+      setColumns(result.columns || []);
       setResults(result.rows || []);
       setExecutionTime(Date.now() - startTime);
       toast.success(`Query executed successfully (${result.rows?.length || 0} rows)`);
@@ -227,7 +229,7 @@ export default function ExplorerPage() {
       </Card>
 
       {/* Main Content - Query Editor & Results */}
-      <div className="flex-1 flex flex-col gap-6">
+      <div className="flex-1 flex flex-col gap-6 min-w-0 overflow-hidden">
         {/* Query Editor */}
         <Card className="flex-shrink-0">
           <CardHeader className="pb-3">
@@ -275,8 +277,8 @@ export default function ExplorerPage() {
         </Card>
 
         {/* Results */}
-        <Card className="flex-1 flex flex-col overflow-hidden">
-          <CardHeader className="pb-3">
+        <Card className="flex-1 flex flex-col min-h-0">
+          <CardHeader className="pb-3 flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <CardTitle className="flex items-center gap-2">
@@ -299,18 +301,18 @@ export default function ExplorerPage() {
               )}
             </div>
           </CardHeader>
-          <CardContent className="flex-1 overflow-auto p-0">
+          <CardContent className="flex-1 min-h-0 p-0">
             {results ? (
-              <div className="overflow-auto">
-                <table className="w-full text-sm">
+              <div className="h-full w-full overflow-auto">
+                <table className="text-sm w-max min-w-full">
                   <thead className="bg-muted sticky top-0">
                     <tr>
-                      {Object.keys(results[0]).map((key) => (
+                      {columns.map((col) => (
                         <th
-                          key={key}
-                          className="px-4 py-3 text-left font-medium border-b"
+                          key={col.name}
+                          className="px-4 py-3 text-left font-medium border-b whitespace-nowrap"
                         >
-                          {key}
+                          {col.name}
                         </th>
                       ))}
                     </tr>
@@ -318,9 +320,11 @@ export default function ExplorerPage() {
                   <tbody>
                     {results.map((row, index) => (
                       <tr key={index} className="border-b hover:bg-muted/50">
-                        {Object.values(row).map((value: any, i) => (
+                        {row.map((value: any, i: number) => (
                           <td key={i} className="px-4 py-2">
-                            {typeof value === "number"
+                            {value === null
+                              ? <span className="text-muted-foreground italic">NULL</span>
+                              : typeof value === "number"
                               ? value.toLocaleString()
                               : String(value)}
                           </td>

@@ -42,8 +42,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { useDataSourceStore } from "@/lib/store";
-import { ConnectionConfig } from "@/types";
 
 const dataSourceTypes = [
   { id: "postgresql", name: "PostgreSQL", icon: "🐘", defaultPort: "5432" },
@@ -73,6 +71,14 @@ export default function DataSourcesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [dataSources, setDataSources] = useState<Array<{
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    tables: number;
+    lastConnected?: string;
+  }>>([]);
   const [formData, setFormData] = useState<ConnectionForm>({
     name: "",
     host: "localhost",
@@ -84,7 +90,29 @@ export default function DataSourcesPage() {
     apiKey: "",
   });
 
-  const { dataSources, addDataSource, removeDataSource } = useDataSourceStore();
+  // Load data sources from API
+  const loadDataSources = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/v1/datasources");
+      if (response.ok) {
+        const sources = await response.json();
+        setDataSources(sources.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          type: s.type,
+          status: s.status || "connected",
+          tables: s.schema_data?.tables?.length || 0,
+          lastConnected: s.last_synced,
+        })));
+      }
+    } catch (error) {
+      console.error("Failed to load data sources:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadDataSources();
+  }, []);
 
   const filteredSources = dataSources.filter((source) =>
     source.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -165,20 +193,8 @@ export default function DataSourcesPage() {
         throw new Error(error.detail || "Failed to connect to data source");
       }
 
-      const newDataSource = await response.json();
-
-      // Add to local store
-      addDataSource({
-        id: newDataSource.id,
-        name: newDataSource.name,
-        type: selectedType as "postgresql" | "mysql" | "mongodb" | "sqlite" | "snowflake" | "bigquery" | "redshift" | "csv" | "rest_api",
-        status: "connected",
-        config: connectionConfig as ConnectionConfig,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        lastConnected: new Date(),
-        schema: newDataSource.schema,
-      });
+      // Reload data sources from API to get fresh list
+      await loadDataSources();
 
       toast.success("Data source connected successfully!");
       setIsDialogOpen(false);
@@ -203,46 +219,14 @@ export default function DataSourcesPage() {
         throw new Error("Failed to delete data source");
       }
 
-      removeDataSource(id);
+      // Reload data sources from API
+      await loadDataSources();
       toast.success(`${name} has been deleted`);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete data source";
       toast.error(errorMessage);
     }
   };
-
-  // Load data sources from API on mount
-  useEffect(() => {
-    const loadDataSources = async () => {
-      try {
-        const response = await fetch("http://localhost:8000/api/v1/datasources");
-        if (response.ok) {
-          const sources = await response.json();
-          sources.forEach((source: { id: string; name: string; type: string; is_connected?: boolean; last_connected?: string; schema?: { tables?: unknown[] }; connection_config?: ConnectionConfig }) => {
-            // Check if already in store
-            const exists = dataSources.find(ds => ds.id === source.id);
-            if (!exists) {
-              addDataSource({
-                id: source.id,
-                name: source.name,
-                type: source.type as "postgresql" | "mysql" | "mongodb" | "sqlite" | "snowflake" | "bigquery" | "redshift" | "csv" | "rest_api",
-                status: source.is_connected ? "connected" : "disconnected",
-                config: source.connection_config || {},
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                lastConnected: source.last_connected ? new Date(source.last_connected) : undefined,
-                schema: source.schema as { tables: { name: string; columns: { name: string; type: string; nullable: boolean; primaryKey: boolean }[] }[] } | undefined,
-              });
-            }
-          });
-        }
-      } catch (error) {
-        console.error("Failed to load data sources:", error);
-      }
-    };
-
-    loadDataSources();
-  }, []);
 
   const getTypeIcon = (type: string) => {
     const found = dataSourceTypes.find((t) => t.id === type);
@@ -503,7 +487,7 @@ export default function DataSourcesPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Database className="h-4 w-4" />
-                      <span>{source.schema?.tables?.length || 0} tables</span>
+                      <span>{source.tables} tables</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {source.lastConnected 
